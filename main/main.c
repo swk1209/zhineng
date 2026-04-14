@@ -10,6 +10,7 @@
 #include "ui.h"
 #include "wifi_service.h"
 #include "app_service.h"
+#include "espnow_service.h"
 
 void app_main(void)
 {
@@ -30,23 +31,35 @@ void app_main(void)
     myiic_init();
     xl9555_init();
     spilcd_init();
+
+    /* 先显示启动页，避免白屏 */
+    spilcd_clear(WHITE);
+    spilcd_show_string(25, 90, 320, 24, 24, "Smart Env Monitor", RED);
+    spilcd_show_string(70, 130, 320, 16, 16, "System Booting...", BLUE);
+
     tp_dev.init();
 
     /* 初始化 WiFi */
     wifi_service_init();
 
+    /* 初始化 ESPNOW */
+    espnow_service_init();
+
     /* 初始化 APP 状态同步层 */
     app_service_init();
 
-    /* 先绘制一次界面 */
+    /* 首次进入页面，整页绘制一次 */
+    g_need_redraw = 1;
     ui_draw_page();
 
     while (1)
     {
-        /* 更新应用状态（如 WiFi 状态同步到 g_app） */
+        /* 更新应用状态：
+         * 数据变化时只做当前页局部刷新
+         */
         if (app_service_update())
         {
-            g_need_redraw = 1;
+            ui_refresh_current_page();
         }
 
         /* 扫描触摸 */
@@ -72,7 +85,7 @@ void app_main(void)
             }
         }
 
-        /* 界面需要重绘时刷新 */
+        /* 只有切页时才整页重绘 */
         if (g_need_redraw)
         {
             ui_draw_page();

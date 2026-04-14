@@ -6,8 +6,8 @@ app_data_t g_app = {
     .light = 123.0f,
     .human = 1,
 
-    .node_a_online = 1,
-    .node_b_online = 1,
+    .node_a_online = 0,
+    .node_b_online = 0,
     .wifi_ok = 0,
     .mqtt_ok = 0,
     .alarm_on = 0,

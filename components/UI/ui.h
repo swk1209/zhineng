@@ -14,6 +14,7 @@ extern page_t g_current_page;
 extern uint8_t g_need_redraw;
 
 void ui_draw_page(void);
+void ui_refresh_current_page(void);
 void ui_touch_process(uint16_t x, uint16_t y);
 
 #endif

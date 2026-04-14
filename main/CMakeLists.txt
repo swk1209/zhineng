@@ -1,5 +1,5 @@
 idf_component_register(
     SRCS "main.c"
     INCLUDE_DIRS "."
-    REQUIRES UI APPDATA WIFISTA APP
+    REQUIRES UI APPDATA WIFISTA APP COMM
 )
