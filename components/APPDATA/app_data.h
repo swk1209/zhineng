@@ -16,6 +16,8 @@ typedef struct {
     uint8_t alarm_on;
 
     char wifi_ip[16];
+    char wifi_mac[18];
+    uint8_t wifi_channel;
 
     float temp_max;
     float humi_max;

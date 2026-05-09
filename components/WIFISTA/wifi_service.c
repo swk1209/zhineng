@@ -24,6 +24,30 @@ static EventGroupHandle_t s_wifi_event = NULL;
 static bool s_wifi_connected = false;
 static int s_retry_num = 0;
 static char s_ip_str[16] = "0.0.0.0";
+static char s_mac_str[18] = "00:00:00:00:00:00";
+static uint8_t s_wifi_channel = 0;
+
+static void wifi_service_log_sta_info(void)
+{
+    uint8_t mac[6] = {0};
+    uint8_t primary = 0;
+    wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
+
+    esp_wifi_get_mac(WIFI_IF_STA, mac);
+    esp_wifi_get_channel(&primary, &second);
+    snprintf(s_mac_str, sizeof(s_mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    s_wifi_channel = primary;
+
+    ESP_LOGI(TAG, "STA MAC: %s", s_mac_str);
+    ESP_LOGI(TAG, "WiFi channel: %d", s_wifi_channel);
+
+    printf("\r\n===== ESPNOW MASTER INFO =====\r\n");
+    printf("STA MAC: %s\r\n", s_mac_str);
+    printf("WiFi channel: %d\r\n", s_wifi_channel);
+    printf("==============================\r\n");
+    fflush(stdout);
+}
 
 static void wifi_event_handler(void *arg,
                                esp_event_base_t event_base,
@@ -67,6 +91,7 @@ static void wifi_event_handler(void *arg,
 
         snprintf(s_ip_str, sizeof(s_ip_str), IPSTR, IP2STR(&event->ip_info.ip));
         ESP_LOGI(TAG, "Got IP: %s", s_ip_str);
+        wifi_service_log_sta_info();
     }
 }
 
@@ -148,6 +173,7 @@ esp_err_t wifi_service_init(void)
         ESP_LOGI(TAG, "Successfully connected to AP");
         ESP_LOGI(TAG, "SSID: %s", DEFAULT_SSID);
         ESP_LOGI(TAG, "IP  : %s", s_ip_str);
+        wifi_service_log_sta_info();
     }
     else if (bits & WIFI_FAIL_BIT)
     {
@@ -171,4 +197,14 @@ bool wifi_service_is_connected(void)
 const char *wifi_service_get_ip_str(void)
 {
     return s_ip_str;
+}
+
+const char *wifi_service_get_mac_str(void)
+{
+    return s_mac_str;
+}
+
+uint8_t wifi_service_get_channel(void)
+{
+    return s_wifi_channel;
 }

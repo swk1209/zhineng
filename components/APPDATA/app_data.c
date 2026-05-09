@@ -13,6 +13,8 @@ app_data_t g_app = {
     .alarm_on = 0,
 
     .wifi_ip = "0.0.0.0",
+    .wifi_mac = "00:00:00:00:00:00",
+    .wifi_channel = 0,
 
     .temp_max = 30.0f,
     .humi_max = 80.0f,

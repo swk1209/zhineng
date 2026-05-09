@@ -1,5 +1,6 @@
 #include "ui.h"
 #include "app_data.h"
+#include "app_service.h"
 #include "spilcd.h"
 #include <stdio.h>
 #include <string.h>
@@ -79,6 +80,11 @@ static void ui_sync_cache_from_app(void)
 {
     memcpy(&s_ui_last_app, &g_app, sizeof(app_data_t));
     s_ui_cache_valid = 1;
+}
+
+static void ui_save_settings(void)
+{
+    app_service_save_settings();
 }
 
 /* ========================= HOME PAGE ========================= */
@@ -267,6 +273,7 @@ static void ui_draw_setting_static(void)
     spilcd_show_string(15, 50, 320, 16, 16, "Temp Max :", UI_TEXT_COLOR);
     spilcd_show_string(15, 85, 320, 16, 16, "Humi Max :", UI_TEXT_COLOR);
     spilcd_show_string(15, 120, 320, 16, 16, "Light Min:", UI_TEXT_COLOR);
+    ui_clear_rect(15, 165, 90, UI_CHAR_H_16);
     spilcd_show_string(15, 165, 320, 16, 16, "Buzzer   :", UI_TEXT_COLOR);
 
     spilcd_show_string(220, 50, 320, 16, 16, "[-] [+]", UI_LABEL_COLOR);
@@ -329,9 +336,9 @@ static void ui_draw_net_static(void)
 
     spilcd_show_string(15, 60, 320, 16, 16, "WiFi :", UI_TEXT_COLOR);
     spilcd_show_string(15, 95, 320, 16, 16, "IP   :", UI_TEXT_COLOR);
-    spilcd_show_string(15, 130, 320, 16, 16, "MQTT :", UI_TEXT_COLOR);
+    spilcd_show_string(15, 130, 320, 16, 16, "CH   :", UI_TEXT_COLOR);
+    spilcd_show_string(15, 155, 320, 16, 16, "MAC  :", UI_TEXT_COLOR);
 
-    spilcd_show_string(15, 175, 320, 16, 16, "Network information page", UI_LABEL_COLOR);
     spilcd_show_string(20, 205, 320, 24, 24, "[ BACK ]", UI_LABEL_COLOR);
 }
 
@@ -347,18 +354,24 @@ static void ui_refresh_net_ip(void)
     ui_draw_value_field(70, 95, 16, g_app.wifi_ip, UI_TEXT_COLOR);
 }
 
-static void ui_refresh_net_mqtt(void)
+static void ui_refresh_net_channel(void)
 {
-    ui_draw_value_field(70, 130, 4,
-                        g_app.mqtt_ok ? "OK" : "OFF",
-                        g_app.mqtt_ok ? UI_TEXT_COLOR : UI_WARN_COLOR);
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%u", g_app.wifi_channel);
+    ui_draw_value_field(70, 130, 3, buf, UI_TEXT_COLOR);
+}
+
+static void ui_refresh_net_mac(void)
+{
+    ui_draw_value_field(70, 155, 18, g_app.wifi_mac, UI_TEXT_COLOR);
 }
 
 static void ui_refresh_net_dynamic_all(void)
 {
     ui_refresh_net_wifi();
     ui_refresh_net_ip();
-    ui_refresh_net_mqtt();
+    ui_refresh_net_channel();
+    ui_refresh_net_mac();
 }
 
 static void ui_refresh_net_dynamic_changed(void)
@@ -376,8 +389,12 @@ static void ui_refresh_net_dynamic_changed(void)
         ui_refresh_net_ip();
     }
 
-    if (s_ui_last_app.mqtt_ok != g_app.mqtt_ok) {
-        ui_refresh_net_mqtt();
+    if (s_ui_last_app.wifi_channel != g_app.wifi_channel) {
+        ui_refresh_net_channel();
+    }
+
+    if (strncmp(s_ui_last_app.wifi_mac, g_app.wifi_mac, sizeof(g_app.wifi_mac)) != 0) {
+        ui_refresh_net_mac();
     }
 }
 
@@ -385,6 +402,160 @@ static void ui_draw_net(void)
 {
     ui_draw_net_static();
     ui_refresh_net_dynamic_all();
+}
+
+/* ========================= AI PAGE ========================= */
+
+static uint8_t ui_ai_has_node_alarm(void)
+{
+    if (g_app.node_a_online &&
+        (g_app.temp > g_app.temp_max ||
+         g_app.humi > g_app.humi_max ||
+         g_app.light < g_app.light_min)) {
+        return 1;
+    }
+
+    if (g_app.node_b_online && g_app.human) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static const char *ui_ai_get_advice_line1(void)
+{
+    if (!g_app.node_a_online || !g_app.node_b_online) {
+        return "Check offline node";
+    }
+
+    if (g_app.alarm_on) {
+        return "Handle alarm source";
+    }
+
+    if (!g_app.wifi_ok) {
+        return "WiFi offline, local mode";
+    }
+
+    return "Keep current settings";
+}
+
+static const char *ui_ai_get_advice_line2(void)
+{
+    if (!g_app.node_a_online) {
+        return "NodeA link/power needed";
+    }
+
+    if (!g_app.node_b_online) {
+        return "NodeB link/power needed";
+    }
+
+    if (g_app.node_a_online && g_app.temp > g_app.temp_max) {
+        return "Cool down the area";
+    }
+
+    if (g_app.node_a_online && g_app.humi > g_app.humi_max) {
+        return "Reduce humidity";
+    }
+
+    if (g_app.node_a_online && g_app.light < g_app.light_min) {
+        return "Increase light level";
+    }
+
+    if (g_app.node_b_online && g_app.human) {
+        return "Confirm human activity";
+    }
+
+    if (!g_app.wifi_ok) {
+        return "Cloud upload paused";
+    }
+
+    return "No action required";
+}
+
+static const char *ui_ai_get_analysis_line1(void)
+{
+    if (!g_app.node_a_online && !g_app.node_b_online) {
+        return "Both nodes offline";
+    }
+
+    if (!g_app.node_a_online) {
+        return "NodeA data missing";
+    }
+
+    if (!g_app.node_b_online) {
+        return "NodeB data missing";
+    }
+
+    if (ui_ai_has_node_alarm()) {
+        return "Anomaly detected";
+    }
+
+    return "No anomaly detected";
+}
+
+static const char *ui_ai_get_analysis_line2(void)
+{
+    if (g_app.node_a_online && g_app.temp > g_app.temp_max) {
+        return "Temp above max limit";
+    }
+
+    if (g_app.node_a_online && g_app.humi > g_app.humi_max) {
+        return "Humi above max limit";
+    }
+
+    if (g_app.node_a_online && g_app.light < g_app.light_min) {
+        return "Light below min limit";
+    }
+
+    if (g_app.node_b_online && g_app.human) {
+        return "Human presence active";
+    }
+
+    if (!g_app.wifi_ok) {
+        return "Network needs attention";
+    }
+
+    return "Values within limits";
+}
+
+static void ui_draw_ai_static(void)
+{
+    ui_clear_page();
+
+    spilcd_show_string(15, 10, 320, 24, 24, "AI ASSIST PAGE", UI_TITLE_COLOR);
+
+    spilcd_show_string(15, 45, 320, 16, 16, "Smart Advice", UI_LABEL_COLOR);
+    spilcd_show_string(15, 105, 320, 16, 16, "Anomaly Analysis", UI_LABEL_COLOR);
+
+    spilcd_show_string(20, 205, 320, 24, 24, "[ BACK ]", UI_LABEL_COLOR);
+}
+
+static void ui_refresh_ai_advice(void)
+{
+    ui_draw_value_field(15, 68, 36, ui_ai_get_advice_line1(),
+                        g_app.alarm_on ? UI_WARN_COLOR : UI_TEXT_COLOR);
+    ui_draw_value_field(15, 86, 36, ui_ai_get_advice_line2(),
+                        g_app.alarm_on ? UI_WARN_COLOR : UI_TEXT_COLOR);
+}
+
+static void ui_refresh_ai_analysis(void)
+{
+    ui_draw_value_field(15, 128, 36, ui_ai_get_analysis_line1(),
+                        ui_ai_has_node_alarm() ? UI_WARN_COLOR : UI_TEXT_COLOR);
+    ui_draw_value_field(15, 146, 36, ui_ai_get_analysis_line2(),
+                        ui_ai_has_node_alarm() ? UI_WARN_COLOR : UI_TEXT_COLOR);
+}
+
+static void ui_refresh_ai_dynamic_all(void)
+{
+    ui_refresh_ai_advice();
+    ui_refresh_ai_analysis();
+}
+
+static void ui_draw_ai(void)
+{
+    ui_draw_ai_static();
+    ui_refresh_ai_dynamic_all();
 }
 
 /* ========================= PUBLIC ========================= */
@@ -406,6 +577,10 @@ void ui_draw_page(void)
 
         case PAGE_NET:
             ui_draw_net();
+            break;
+
+        case PAGE_AI:
+            ui_draw_ai();
             break;
 
         default:
@@ -435,6 +610,10 @@ void ui_refresh_current_page(void)
 
         case PAGE_NET:
             ui_refresh_net_dynamic_changed();
+            break;
+
+        case PAGE_AI:
+            ui_refresh_ai_dynamic_all();
             break;
         
 
@@ -467,7 +646,8 @@ void ui_touch_process(uint16_t raw_x, uint16_t raw_y)
                 g_need_redraw = 1;
             }
             else if (ui_in_rect(x, y, 170, 205, 310, 239)) {
-                /* 暂时先不处理 */
+                g_current_page = PAGE_AI;
+                g_need_redraw = 1;
             }
             break;
 
@@ -482,36 +662,44 @@ void ui_touch_process(uint16_t raw_x, uint16_t raw_y)
             if (ui_in_rect(x, y, 220, 40, 255, 70)) {
                 g_app.temp_max -= 1.0f;
                 ui_refresh_setting_temp();
+                ui_save_settings();
                 ui_sync_cache_from_app();
             }
             else if (ui_in_rect(x, y, 260, 40, 310, 70)) {
                 g_app.temp_max += 1.0f;
                 ui_refresh_setting_temp();
+                ui_save_settings();
                 ui_sync_cache_from_app();
             }
             else if (ui_in_rect(x, y, 220, 75, 255, 105)) {
                 g_app.humi_max -= 1.0f;
                 ui_refresh_setting_humi();
+                ui_save_settings();
                 ui_sync_cache_from_app();
             }
             else if (ui_in_rect(x, y, 260, 75, 310, 105)) {
                 g_app.humi_max += 1.0f;
                 ui_refresh_setting_humi();
+                ui_save_settings();
                 ui_sync_cache_from_app();
             }
             else if (ui_in_rect(x, y, 220, 110, 255, 140)) {
                 g_app.light_min -= 1.0f;
                 ui_refresh_setting_light();
+                ui_save_settings();
                 ui_sync_cache_from_app();
             }
             else if (ui_in_rect(x, y, 260, 110, 310, 140)) {
                 g_app.light_min += 1.0f;
                 ui_refresh_setting_light();
+                ui_save_settings();
                 ui_sync_cache_from_app();
             }
             else if (ui_in_rect(x, y, 170, 150, 310, 185)) {
                 g_app.buzzer_on = !g_app.buzzer_on;
+                app_service_apply_alarm_output();
                 ui_refresh_setting_buzzer();
+                ui_save_settings();
                 ui_sync_cache_from_app();
             }
             else if (ui_in_rect(x, y, 10, 190, 130, 239)) {
@@ -521,6 +709,13 @@ void ui_touch_process(uint16_t raw_x, uint16_t raw_y)
             break;
 
         case PAGE_NET:
+            if (ui_in_rect(x, y, 10, 190, 130, 239)) {
+                g_current_page = PAGE_HOME;
+                g_need_redraw = 1;
+            }
+            break;
+
+        case PAGE_AI:
             if (ui_in_rect(x, y, 10, 190, 130, 239)) {
                 g_current_page = PAGE_HOME;
                 g_need_redraw = 1;

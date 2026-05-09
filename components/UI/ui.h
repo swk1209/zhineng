@@ -7,7 +7,8 @@ typedef enum {
     PAGE_HOME = 0,
     PAGE_DATA,
     PAGE_SETTING,
-    PAGE_NET
+    PAGE_NET,
+    PAGE_AI
 } page_t;
 
 extern page_t g_current_page;

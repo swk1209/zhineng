@@ -1,5 +1,6 @@
 set(src_dirs
             LED
+            BUZZER
             MYIIC
             XL9555
             MYSPI
@@ -8,6 +9,7 @@ set(src_dirs
 
 set(include_dirs
             LED
+            BUZZER
             MYIIC
             XL9555
             MYSPI

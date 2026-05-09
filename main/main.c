@@ -3,6 +3,7 @@
 #include "nvs_flash.h"
 #include "touch.h"
 #include "led.h"
+#include "buzzer.h"
 #include "myiic.h"
 #include "my_spi.h"
 #include "spilcd.h"
@@ -27,6 +28,7 @@ void app_main(void)
     ESP_ERROR_CHECK(ret);
 
     led_init();
+    buzzer_init();
     my_spi_init();
     myiic_init();
     xl9555_init();
@@ -73,7 +75,6 @@ void app_main(void)
                 {
                     ui_touch_process(tp_dev.x[t], tp_dev.y[t]);
                     last_status[t] = 1;
-                    LED0_TOGGLE();
                 }
             }
             else
